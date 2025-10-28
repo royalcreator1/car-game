@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Futuristic Car Racing</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="start-screen" class="screen">
+        <div class="game-title">
+            <h1>🚗 NEON RACER</h1>
+            <p>Futuristic Car Racing</p>
+        </div>
+        <div class="menu">
+            <button id="start-btn" class="btn">START GAME</button>
+            <button id="highscore-btn" class="btn">HIGH SCORES</button>
+            <div class="controls-info">
+                <p><strong>Controls:</strong></p>
+                <p>← → Arrow Keys to steer</p>
+                <p>Spacebar for boost</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="game-screen" class="screen hidden">
+        <div class="ui-overlay">
+            <div class="score-display">
+                <div class="score-item">
+                    <span>Score:</span>
+                    <span id="current-score">0</span>
+                </div>
+                <div class="score-item">
+                    <span>High Score:</span>
+                    <span id="high-score">0</span>
+                </div>
+                <div class="speed-meter">
+                    <span>Speed:</span>
+                    <div class="speed-bar">
+                        <div id="speed-fill" class="speed-fill"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <div id="gameover-screen" class="screen hidden">
+        <div class="gameover-content">
+            <h2>GAME OVER</h2>
+            <div class="final-score">
+                <p>Your Score: <span id="final-score">0</span></p>
+                <p id="new-highscore" class="hidden">🎉 NEW HIGH SCORE! 🎉</p>
+            </div>
+            <input type="text" id="player-name" placeholder="Enter your name" maxlength="20">
+            <div class="gameover-buttons">
+                <button id="save-score-btn" class="btn">Save Score</button>
+                <button id="play-again-btn" class="btn">Play Again</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="highscore-screen" class="screen hidden">
+        <div class="highscore-content">
+            <h2>HIGH SCORES</h2>
+            <div id="highscore-list"></div>
+            <button id="back-btn" class="btn">Back to Menu</button>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
+
