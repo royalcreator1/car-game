@@ -20,18 +20,20 @@ const gameState = {
     slippery: false,
     slipperyTime: 0,
     boostActive: false,
-    boostTime: 0
+    boostTime: 0,
+    collisionChecked: false
 };
 
-// Game Objects
+// Game Objects - Mr. Bean's Car (Green Mini Cooper)
 const playerCar = {
     x: canvas.width / 2,
     y: canvas.height - 150,
     width: 70,
-    height: 120,
+    height: 80,
     speed: 8,
     baseSpeed: 8,
-    color: '#00f260',
+    color: '#008000', // British Racing Green
+    tint: '#00aa00',
     tilt: 0,
     wheelsRotation: 0,
     animationFrame: 0
@@ -146,7 +148,8 @@ function generateHazard() {
         type: type,
         rotation: 0,
         opacity: 0.7,
-        speed: gameState.roadSpeed
+        speed: gameState.roadSpeed,
+        triggered: false // Track if already triggered
     });
 }
 
@@ -165,10 +168,10 @@ function createExplosion(x, y, color = null) {
 }
 
 function createDust(x, y) {
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 10; i++) {
         roadDust.push({
-            x: x + Math.random() * 80 - 40,
-            y: y + Math.random() * 80 - 40,
+            x: x + Math.random() * 100 - 50,
+            y: y + Math.random() * 100 - 50,
             size: Math.random() * 8 + 2,
             life: 1.0,
             opacity: Math.random() * 0.3 + 0.2
@@ -194,11 +197,16 @@ function update(deltaTime) {
         }
     }
 
-    // Update slippery state
+    // Update slippery state - FIXED BUG
     if (gameState.slippery) {
         gameState.slipperyTime -= 16;
         if (gameState.slipperyTime <= 0) {
             gameState.slippery = false;
+            playerCar.speed = playerCar.baseSpeed;
+        }
+    } else {
+        // Reset speed if not slippery
+        if (!gameState.slippery && playerCar.speed !== playerCar.baseSpeed) {
             playerCar.speed = playerCar.baseSpeed;
         }
     }
@@ -222,21 +230,18 @@ function update(deltaTime) {
     });
 
     // Update player car
-    const moveSpeed = gameState.slippery ? playerCar.speed * 0.5 : playerCar.speed;
+    const moveSpeed = gameState.slippery ? playerCar.speed * 0.3 : playerCar.speed;
     let moved = false;
     
     if (keys['ArrowLeft'] && playerCar.x > canvas.width / 6) {
         playerCar.x -= moveSpeed;
         moved = true;
-        playerCar.tilt = -0.15;
-    }
-    if (keys['ArrowRight'] && playerCar.x < canvas.width - canvas.width / 6) {
+        playerCar.tilt = -0.2;
+    } else if (keys['ArrowRight'] && playerCar.x < canvas.width - canvas.width / 6) {
         playerCar.x += moveSpeed;
         moved = true;
-        playerCar.tilt = 0.15;
-    }
-    
-    if (!moved) {
+        playerCar.tilt = 0.2;
+    } else {
         playerCar.tilt *= 0.9;
     }
     
@@ -250,20 +255,18 @@ function update(deltaTime) {
         gameState.speed = Math.max(gameState.speed - 0.3, gameState.roadSpeed);
     }
 
-    let collisionOccurred = false;
-
     // Update pedestrians
     pedestrians.forEach((ped, index) => {
         ped.y += ped.speed;
         ped.walkCycle += 0.2;
         
-        if (!collisionOccurred && !gameState.collisionChecked && !gameState.flying) {
+        if (!gameState.collisionChecked && !gameState.flying) {
             if (playerCar.x < ped.x + ped.width &&
                 playerCar.x + playerCar.width > ped.x &&
                 playerCar.y < ped.y + ped.height &&
                 playerCar.y + playerCar.height > ped.y) {
-                collisionOccurred = true;
                 gameState.collisionChecked = true;
+                gameState.running = false;
                 createExplosion(ped.x + ped.width / 2, ped.y + ped.height / 2, '#ff4444');
                 setTimeout(() => gameOver(), 500);
                 return;
@@ -282,13 +285,13 @@ function update(deltaTime) {
         obstacle.y += obstacle.speed;
         obstacle.rotation += 0.15;
         
-        if (!collisionOccurred && !gameState.collisionChecked && !gameState.flying) {
+        if (!gameState.collisionChecked && !gameState.flying) {
             if (playerCar.x < obstacle.x + obstacle.width &&
                 playerCar.x + playerCar.width > obstacle.x &&
                 playerCar.y < obstacle.y + obstacle.height &&
                 playerCar.y + playerCar.height > obstacle.y) {
-                collisionOccurred = true;
                 gameState.collisionChecked = true;
+                gameState.running = false;
                 createExplosion(obstacle.x + obstacle.width / 2, obstacle.y + obstacle.height / 2);
                 setTimeout(() => gameOver(), 500);
                 return;
@@ -330,19 +333,31 @@ function update(deltaTime) {
         }
     });
 
-    // Update hazards
+    // Update hazards - FIXED BUG
     hazards.forEach((hazard, index) => {
         hazard.y += hazard.speed;
         hazard.rotation += 0.05;
         
-        if (playerCar.x < hazard.x + hazard.width &&
+        if (!hazard.triggered && 
+            playerCar.x < hazard.x + hazard.width &&
             playerCar.x + playerCar.width > hazard.x &&
             playerCar.y < hazard.y + hazard.height &&
-            playerCar.y + playerCar.height > hazard.y &&
-            !gameState.slippery) {
+            playerCar.y + playerCar.height > hazard.y) {
+            
+            // Mark as triggered to prevent re-triggering
+            hazard.triggered = true;
+            
+            // Apply slippery effect
             gameState.slippery = true;
             gameState.slipperyTime = 2000;
+            playerCar.speed = playerCar.baseSpeed; // Reset before applying effect
             createDust(hazard.x + hazard.width / 2, hazard.y + hazard.height / 2);
+            
+            // Remove hazard after a delay
+            setTimeout(() => {
+                const i = hazards.indexOf(hazard);
+                if (i > -1) hazards.splice(i, 1);
+            }, 1000);
         }
         
         if (hazard.y > canvas.height) {
@@ -399,13 +414,13 @@ function render() {
 
     // Draw grass/side edges
     const gradient = ctx.createLinearGradient(0, 0, canvas.width / 6, 0);
-    gradient.addColorStop(0, '#0a1a0a');
-    gradient.addColorStop(1, '#001a0a');
+    gradient.addColorStop(0, '#2a4a2a');
+    gradient.addColorStop(1, '#0a2a0a');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, canvas.width / 6, canvas.height);
     ctx.fillRect(canvas.width - canvas.width / 6, 0, canvas.width / 6, canvas.height);
 
-    // Draw road lines with perspective
+    // Draw road lines
     roadLines.forEach(line => {
         ctx.strokeStyle = `rgba(255, 255, 255, ${line.opacity})`;
         ctx.lineWidth = 6;
@@ -484,13 +499,12 @@ function render() {
         ctx.restore();
     });
 
-    // Draw obstacles with 3D effect
+    // Draw obstacles
     obstacles.forEach(obstacle => {
         ctx.save();
         ctx.translate(obstacle.x + obstacle.width / 2, obstacle.y + obstacle.height / 2);
         ctx.rotate(obstacle.rotation);
         
-        // Gradient for 3D effect
         const gradient = ctx.createLinearGradient(-obstacle.width / 2, 0, obstacle.width / 2, 0);
         gradient.addColorStop(0, obstacle.color);
         gradient.addColorStop(1, '#000');
@@ -527,14 +541,12 @@ function render() {
         ctx.strokeStyle = '#000';
         ctx.lineWidth = 2;
         if (power.type === 'fly') {
-            // Wing icon
             ctx.beginPath();
             ctx.moveTo(-size * 0.6, 0);
             ctx.lineTo(0, -size * 0.6);
             ctx.lineTo(size * 0.6, 0);
             ctx.stroke();
         } else {
-            // Bolt icon
             ctx.beginPath();
             ctx.moveTo(0, -size * 0.4);
             ctx.lineTo(-size * 0.3, size * 0.2);
@@ -548,7 +560,7 @@ function render() {
     });
     ctx.globalAlpha = 1;
 
-    // Draw player car with improved design
+    // Draw Mr. Bean's Green Mini Cooper
     ctx.save();
     
     // Flying effect
@@ -556,19 +568,19 @@ function render() {
         ctx.shadowBlur = 40;
         ctx.shadowColor = '#00f0ff';
         
-        // Draw wings
+        // Wings
         ctx.fillStyle = '#00f0ff';
         ctx.globalAlpha = 0.6;
         ctx.beginPath();
         ctx.moveTo(playerCar.x - 20, playerCar.y + 40);
-        ctx.lineTo(playerCar.x - 40, playerCar.y + 60);
-        ctx.lineTo(playerCar.x - 20, playerCar.y + 80);
+        ctx.lineTo(playerCar.x - 40, playerCar.y + 50);
+        ctx.lineTo(playerCar.x - 20, playerCar.y + 60);
         ctx.fill();
         
         ctx.beginPath();
         ctx.moveTo(playerCar.x + playerCar.width + 20, playerCar.y + 40);
-        ctx.lineTo(playerCar.x + playerCar.width + 40, playerCar.y + 60);
-        ctx.lineTo(playerCar.x + playerCar.width + 20, playerCar.y + 80);
+        ctx.lineTo(playerCar.x + playerCar.width + 40, playerCar.y + 50);
+        ctx.lineTo(playerCar.x + playerCar.width + 20, playerCar.y + 60);
         ctx.fill();
         ctx.globalAlpha = 1;
     }
@@ -577,68 +589,91 @@ function render() {
     ctx.translate(playerCar.x + playerCar.width / 2, playerCar.y + playerCar.height / 2);
     ctx.rotate(playerCar.tilt);
     
-    // Car body
+    // Mr. Bean's Car - Classic Mini Cooper Design
     const carGradient = ctx.createLinearGradient(-playerCar.width / 2, 0, playerCar.width / 2, 0);
-    carGradient.addColorStop(0, '#00ff88');
-    carGradient.addColorStop(0.5, playerCar.color);
-    carGradient.addColorStop(1, '#00aa44');
+    carGradient.addColorStop(0, '#004400');
+    carGradient.addColorStop(0.5, '#008000');
+    carGradient.addColorStop(1, '#00aa00');
     ctx.fillStyle = carGradient;
     
-    ctx.shadowBlur = 30;
-    ctx.shadowColor = playerCar.color;
+    ctx.shadowBlur = 25;
+    ctx.shadowColor = '#008000';
     
-    // Main body
+    // Rounded Mini Cooper body
     ctx.beginPath();
-    ctx.moveTo(-playerCar.width / 2 + 5, -playerCar.height / 2);
-    ctx.lineTo(playerCar.width / 2 - 5, -playerCar.height / 2);
-    ctx.lineTo(playerCar.width / 2, -playerCar.height / 4);
-    ctx.lineTo(playerCar.width / 2, playerCar.height / 4);
-    ctx.lineTo(playerCar.width / 2 - 5, playerCar.height / 2);
+    ctx.arc(0, -playerCar.height / 3, playerCar.width / 2 - 3, 0, Math.PI, true);
+    ctx.lineTo(-playerCar.width / 2 + 5, -playerCar.height / 2);
     ctx.lineTo(-playerCar.width / 2 + 5, playerCar.height / 2);
-    ctx.lineTo(-playerCar.width / 2, playerCar.height / 4);
-    ctx.lineTo(-playerCar.width / 2, -playerCar.height / 4);
+    ctx.arc(0, playerCar.height / 3, playerCar.width / 2 - 3, 0, Math.PI, false);
+    ctx.lineTo(playerCar.width / 2 - 5, playerCar.height / 2);
+    ctx.lineTo(playerCar.width / 2 - 5, -playerCar.height / 2);
     ctx.closePath();
     ctx.fill();
     
+    // White racing stripe (characteristic of Mini Cooper)
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(-playerCar.width / 2 + 3, -playerCar.height / 2 + 2, playerCar.width - 6, 3);
+    ctx.fillRect(-playerCar.width / 2 + 3, playerCar.height / 4, playerCar.width - 6, 3);
+    
     // Windows
     ctx.fillStyle = '#001122';
-    ctx.globalAlpha = 0.6;
-    ctx.fillRect(-playerCar.width / 3, -playerCar.height / 4, playerCar.width / 1.5, playerCar.height / 3);
+    ctx.globalAlpha = 0.7;
+    ctx.fillRect(-playerCar.width / 2 + 8, -playerCar.height / 2 + 5, playerCar.width / 3, playerCar.height / 3);
+    ctx.fillRect(playerCar.width / 6, -playerCar.height / 2 + 5, playerCar.width / 3, playerCar.height / 3);
     ctx.globalAlpha = 1;
     
-    // Wheels
+    // Wheels (large Mini Cooper wheels)
     ctx.save();
-    ctx.translate(-playerCar.width / 3, playerCar.height / 2);
+    ctx.translate(-playerCar.width / 3 + 5, playerCar.height / 2 - 5);
     ctx.rotate(playerCar.wheelsRotation);
     ctx.fillStyle = '#222';
     ctx.beginPath();
-    ctx.arc(0, 0, 12, 0, Math.PI * 2);
+    ctx.arc(0, 0, 14, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = '#444';
+    
+    // Tire detail
+    ctx.strokeStyle = '#000';
     ctx.lineWidth = 2;
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 12; i++) {
+        const angle = i * Math.PI / 6;
         ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(Math.cos(i * Math.PI / 4) * 8, Math.sin(i * Math.PI / 4) * 8);
+        ctx.moveTo(Math.cos(angle) * 6, Math.sin(angle) * 6);
+        ctx.lineTo(Math.cos(angle) * 10, Math.sin(angle) * 10);
         ctx.stroke();
     }
+    
+    // Hub
+    ctx.fillStyle = '#444';
+    ctx.beginPath();
+    ctx.arc(0, 0, 4, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
     
+    // Second wheel
     ctx.save();
-    ctx.translate(playerCar.width / 3, playerCar.height / 2);
+    ctx.translate(playerCar.width / 3 - 5, playerCar.height / 2 - 5);
     ctx.rotate(playerCar.wheelsRotation);
     ctx.fillStyle = '#222';
     ctx.beginPath();
-    ctx.arc(0, 0, 12, 0, Math.PI * 2);
+    ctx.arc(0, 0, 14, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = '#444';
+    
+    // Tire detail
+    ctx.strokeStyle = '#000';
     ctx.lineWidth = 2;
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 12; i++) {
+        const angle = i * Math.PI / 6;
         ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(Math.cos(i * Math.PI / 4) * 8, Math.sin(i * Math.PI / 4) * 8);
+        ctx.moveTo(Math.cos(angle) * 6, Math.sin(angle) * 6);
+        ctx.lineTo(Math.cos(angle) * 10, Math.sin(angle) * 10);
         ctx.stroke();
     }
+    
+    // Hub
+    ctx.fillStyle = '#444';
+    ctx.beginPath();
+    ctx.arc(0, 0, 4, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
     
     ctx.restore();
@@ -653,12 +688,12 @@ function render() {
 
     // Draw UI overlays
     if (gameState.flying) {
-        ctx.fillStyle = 'rgba(0, 240, 255, 0.3)';
+        ctx.fillStyle = 'rgba(0, 240, 255, 0.2)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
     
     if (gameState.slippery) {
-        ctx.fillStyle = 'rgba(255, 255, 0, 0.2)';
+        ctx.fillStyle = 'rgba(255, 255, 0, 0.15)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 }
