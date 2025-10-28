@@ -1,17 +1,30 @@
 # 🚗 Futuristic Car Racing Game
 
-A professional, feature-rich car racing game with smooth animations, dynamic gameplay, and a highscore system.
+A professional car racing game with smooth animations, dynamic gameplay, and a highscore system.
 
-**Built in 2 minutes with Cursor AI** 🚀
+## 📝 Development Journey
+
+**Initial Build (2 minutes):** Built perfectly with Cursor AI - worked flawlessly on first try!
+
+**Complexity Journey:** 
+- Added water/grease hazards → game started getting stuck
+- Added multiple power-ups → more bugs
+- Added pedestrians → performance issues
+- Spent 20+ minutes debugging stuck state bugs
+- Final solution: Simplified back to stable core features
+
+**Lesson Learned:** Sometimes simpler is better. The initial simple version worked perfectly, and adding complexity introduced bugs that took extensive debugging to resolve.
 
 ## Features
 
-- **Professional Graphics**: Neon-lit futuristic aesthetic with smooth animations
+- **Mr. Bean's Green Mini Cooper**: Classic car design with realistic animations
 - **Dynamic Gameplay**: Variable speed, boost system, and lane-based obstacles
-- **Highscore System**: Save and track your best scores with player names
-- **Particle Effects**: Beautiful explosion and particle effects
-- **Responsive Design**: Works on all screen sizes
-- **3D Effects**: Rotating obstacles with shadows and gradients
+- **Highscore System**: Save and track your best scores with player names  
+- **Particle Effects**: Beautiful explosion effects on collision
+- **Power-Ups**: 
+  - 🛸 Fly (3s invincibility)
+  - ⚡ Boost (5s speed increase)
+- **Simple & Stable**: Tested and working reliably
 
 ## Installation
 
@@ -47,9 +60,18 @@ http://localhost:3000
 
 ## Technology Stack
 
-- **Frontend**: HTML5 Canvas, CSS3, JavaScript
+- **Frontend**: HTML5 Canvas, CSS3, Vanilla JavaScript
 - **Backend**: Node.js, Express
-- **Database**: JSON file (easily replaceable with MongoDB/PostgreSQL)
+- **Database**: JSON file for scores
+
+## Known Issues (Removed Features)
+
+The following features were removed due to causing "game stuck" bugs:
+- ❌ Water puddles (caused stuck state)
+- ❌ Grease patches (caused stuck state)  
+- ❌ Slippery road effects (caused stuck state)
+
+These features may work in future versions with better state management.
 
 ## File Structure
 

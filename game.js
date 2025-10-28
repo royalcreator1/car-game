@@ -11,24 +11,34 @@ const gameState = {
     score: 0,
     highScore: 0,
     speed: 0,
-    maxSpeed: 20,
+    maxSpeed: 25,
     roadOffset: 0,
-    roadSpeed: 5
+    roadSpeed: 5,
+    flying: false,
+    flyTime: 0,
+    maxFlyTime: 3000,
+    boostActive: false,
+    boostTime: 0,
+    collisionChecked: false
 };
 
-// Game Objects
+// Game Objects - Mr. Bean's Car (Green Mini Cooper)
 const playerCar = {
     x: canvas.width / 2,
     y: canvas.height - 150,
-    width: 60,
-    height: 100,
+    width: 70,
+    height: 80,
     speed: 8,
-    color: '#00f260'
+    tilt: 0,
+    wheelsRotation: 0,
+    animationFrame: 0
 };
 
 const obstacles = [];
 const roadLines = [];
 const particles = [];
+const pedestrians = [];
+const powerUps = [];
 
 // Input handling
 const keys = {};
@@ -52,7 +62,11 @@ document.addEventListener('keyup', (e) => {
 function initRoad() {
     roadLines.length = 0;
     for (let i = 0; i < canvas.height + 100; i += 150) {
-        roadLines.push({ y: i, opacity: Math.random() * 0.3 + 0.2 });
+        roadLines.push({ 
+            y: i, 
+            opacity: Math.random() * 0.3 + 0.2,
+            offset: Math.random() * 50 - 25
+        });
     }
 }
 
@@ -73,22 +87,60 @@ function generateObstacle() {
     });
 }
 
+// Generate pedestrians
+function generatePedestrian() {
+    const laneWidth = canvas.width / 4;
+    const lanes = [laneWidth, laneWidth * 2, laneWidth * 3];
+    const lane = lanes[Math.floor(Math.random() * lanes.length)];
+    
+    pedestrians.push({
+        x: lane + Math.random() * 30 - 15,
+        y: -50,
+        width: 20,
+        height: 40,
+        color: `hsl(${Math.random() * 360}, 50%, 50%)`,
+        walkCycle: 0,
+        speed: gameState.roadSpeed
+    });
+}
+
+// Generate power-ups
+function generatePowerUp() {
+    const laneWidth = canvas.width / 4;
+    const lanes = [laneWidth, laneWidth * 2, laneWidth * 3];
+    const lane = lanes[Math.floor(Math.random() * lanes.length)];
+    const types = ['fly', 'boost'];
+    const type = types[Math.floor(Math.random() * types.length)];
+    
+    powerUps.push({
+        x: lane,
+        y: -50,
+        width: 30,
+        height: 30,
+        type: type,
+        rotation: 0,
+        pulse: 0,
+        speed: gameState.roadSpeed,
+        collected: false
+    });
+}
+
 // Generate particles
-function createExplosion(x, y) {
-    for (let i = 0; i < 20; i++) {
+function createExplosion(x, y, color = null) {
+    for (let i = 0; i < 30; i++) {
         particles.push({
             x: x + Math.random() * 50 - 25,
             y: y + Math.random() * 50 - 25,
-            vx: (Math.random() - 0.5) * 10,
-            vy: (Math.random() - 0.5) * 10,
+            vx: (Math.random() - 0.5) * 15,
+            vy: (Math.random() - 0.5) * 15,
             life: 1.0,
-            color: `hsl(${Math.random() * 60}, 100%, 50%)`
+            color: color || `hsl(${Math.random() * 60}, 100%, 50%)`
         });
     }
 }
 
 // Update function
-function update(deltaTime) {
+function update() {
     if (!gameState.running) return;
 
     // Update road animation
@@ -97,79 +149,178 @@ function update(deltaTime) {
         gameState.roadOffset = 0;
     }
 
+    // Update flying state
+    if (gameState.flying) {
+        gameState.flyTime -= 16;
+        if (gameState.flyTime <= 0) {
+            gameState.flying = false;
+        }
+    }
+
+    // Update boost state
+    if (gameState.boostActive) {
+        gameState.boostTime -= 16;
+        if (gameState.boostTime <= 0) {
+            gameState.boostActive = false;
+        }
+    }
+
     // Update road lines
     roadLines.forEach(line => {
         line.y += gameState.roadSpeed;
         if (line.y > canvas.height) {
             line.y = -150;
             line.opacity = Math.random() * 0.3 + 0.2;
+            line.offset = Math.random() * 50 - 25;
         }
     });
 
     // Update player car
+    let moved = false;
+    
     if (keys['ArrowLeft'] && playerCar.x > canvas.width / 6) {
         playerCar.x -= playerCar.speed;
-    }
-    if (keys['ArrowRight'] && playerCar.x < canvas.width - canvas.width / 6) {
+        moved = true;
+        playerCar.tilt = -0.2;
+    } else if (keys['ArrowRight'] && playerCar.x < canvas.width - canvas.width / 6) {
         playerCar.x += playerCar.speed;
+        moved = true;
+        playerCar.tilt = 0.2;
+    } else {
+        playerCar.tilt *= 0.9;
     }
+    
+    playerCar.wheelsRotation += gameState.speed * 0.1;
+    playerCar.animationFrame += gameState.speed * 0.05;
 
     // Boost with spacebar
-    if (keys['Space']) {
-        gameState.speed = Math.min(gameState.speed + 0.3, gameState.maxSpeed);
+    if (keys['Space'] || gameState.boostActive) {
+        gameState.speed = Math.min(gameState.speed + 0.5, gameState.maxSpeed);
     } else {
-        gameState.speed = Math.max(gameState.speed - 0.2, gameState.roadSpeed);
+        gameState.speed = Math.max(gameState.speed - 0.3, gameState.roadSpeed);
     }
 
-    let collisionOccurred = false;
+    // Update pedestrians
+    for (let i = pedestrians.length - 1; i >= 0; i--) {
+        const ped = pedestrians[i];
+        ped.y += ped.speed;
+        ped.walkCycle += 0.2;
+        
+        // Check collision only if not already checked and not flying
+        if (gameState.running && !gameState.collisionChecked && !gameState.flying) {
+            if (playerCar.x < ped.x + ped.width &&
+                playerCar.x + playerCar.width > ped.x &&
+                playerCar.y < ped.y + ped.height &&
+                playerCar.y + playerCar.height > ped.y) {
+                
+                gameState.collisionChecked = true;
+                gameState.running = false;
+                createExplosion(ped.x + ped.width / 2, ped.y + ped.height / 2, '#ff4444');
+                setTimeout(() => gameOver(), 500);
+                return;
+            }
+        }
+        
+        if (ped.y > canvas.height) {
+            pedestrians.splice(i, 1);
+            gameState.score += 15;
+            updateScoreDisplay();
+        }
+    }
 
     // Update obstacles
-    obstacles.forEach((obstacle, index) => {
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+        const obstacle = obstacles[i];
         obstacle.y += obstacle.speed;
-        obstacle.rotation += 0.1;
+        obstacle.rotation += 0.15;
         
-        // Check collision
-        if (!collisionOccurred && !gameState.collisionChecked) {
+        // Check collision only if not already checked and not flying
+        if (gameState.running && !gameState.collisionChecked && !gameState.flying) {
             if (playerCar.x < obstacle.x + obstacle.width &&
                 playerCar.x + playerCar.width > obstacle.x &&
                 playerCar.y < obstacle.y + obstacle.height &&
                 playerCar.y + playerCar.height > obstacle.y) {
-                collisionOccurred = true;
+                
                 gameState.collisionChecked = true;
+                gameState.running = false;
                 createExplosion(obstacle.x + obstacle.width / 2, obstacle.y + obstacle.height / 2);
                 setTimeout(() => gameOver(), 500);
                 return;
             }
         }
-
-        // Remove obstacles that are off screen
+        
         if (obstacle.y > canvas.height) {
-            obstacles.splice(index, 1);
+            obstacles.splice(i, 1);
             gameState.score += 10;
             updateScoreDisplay();
         }
-    });
+    }
 
-    // Spawn new obstacles
-    if (Math.random() < 0.02) {
+    // Update power-ups - SIMPLIFIED AND BULLETPROOF
+    for (let i = powerUps.length - 1; i >= 0; i--) {
+        const power = powerUps[i];
+        power.y += power.speed;
+        power.rotation += 0.1;
+        power.pulse = (power.pulse + 0.1) % (Math.PI * 2);
+        
+        // Check if player collected power-up
+        if (!power.collected &&
+            playerCar.x < power.x + power.width &&
+            playerCar.x + playerCar.width > power.x &&
+            playerCar.y < power.y + power.height &&
+            playerCar.y + playerCar.height > power.y) {
+            
+            // Mark as collected immediately to prevent re-processing
+            power.collected = true;
+            
+            if (power.type === 'fly') {
+                gameState.flying = true;
+                gameState.flyTime = gameState.maxFlyTime;
+                createExplosion(power.x + power.width / 2, power.y + power.height / 2, '#00f0ff');
+            } else if (power.type === 'boost') {
+                gameState.boostActive = true;
+                gameState.boostTime = 5000;
+                createExplosion(power.x + power.width / 2, power.y + power.height / 2, '#ffff00');
+            }
+            
+            // Remove immediately
+            powerUps.splice(i, 1);
+            continue;
+        }
+        
+        if (power.y > canvas.height) {
+            powerUps.splice(i, 1);
+        }
+    }
+
+    // Spawn entities
+    if (Math.random() < 0.015) {
         generateObstacle();
+    }
+    if (Math.random() < 0.008) {
+        generatePedestrian();
+    }
+    if (Math.random() < 0.003) {
+        generatePowerUp();
     }
 
     // Update particles
-    particles.forEach((particle, index) => {
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const particle = particles[i];
         particle.x += particle.vx;
         particle.y += particle.vy;
         particle.life -= 0.02;
+        particle.vy += 0.3;
         
         if (particle.life <= 0) {
-            particles.splice(index, 1);
+            particles.splice(i, 1);
         }
-    });
+    }
 }
 
 // Render function
 function render() {
-    // Clear canvas with fade effect
+    // Clear canvas
     ctx.fillStyle = 'rgba(10, 10, 10, 0.8)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -177,24 +328,63 @@ function render() {
     ctx.fillStyle = '#1a1a1a';
     ctx.fillRect(canvas.width / 6, 0, (canvas.width * 2) / 3, canvas.height);
 
+    // Draw side edges
+    const gradient = ctx.createLinearGradient(0, 0, canvas.width / 6, 0);
+    gradient.addColorStop(0, '#2a4a2a');
+    gradient.addColorStop(1, '#0a2a0a');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width / 6, canvas.height);
+    ctx.fillRect(canvas.width - canvas.width / 6, 0, canvas.width / 6, canvas.height);
+
     // Draw road lines
     roadLines.forEach(line => {
         ctx.strokeStyle = `rgba(255, 255, 255, ${line.opacity})`;
-        ctx.lineWidth = 5;
-        ctx.setLineDash([20, 30]);
+        ctx.lineWidth = 6;
+        ctx.setLineDash([30, 40]);
         ctx.beginPath();
-        ctx.moveTo(canvas.width / 2, line.y);
-        ctx.lineTo(canvas.width / 2, line.y + 50);
+        ctx.moveTo(canvas.width / 2 + line.offset, line.y);
+        ctx.lineTo(canvas.width / 2 + line.offset, line.y + 60);
         ctx.stroke();
+        ctx.setLineDash([]);
     });
 
-    // Draw obstacles with 3D effect
+    // Draw pedestrians
+    pedestrians.forEach(ped => {
+        ctx.save();
+        
+        ctx.fillStyle = ped.color;
+        ctx.fillRect(ped.x + 5, ped.y + 20, 10, 20);
+        
+        ctx.beginPath();
+        ctx.arc(ped.x + ped.width / 2, ped.y + 12, 8, 0, Math.PI * 2);
+        ctx.fill();
+        
+        const legOffset = Math.sin(ped.walkCycle) * 3;
+        ctx.fillStyle = '#333';
+        ctx.fillRect(ped.x + 6, ped.y + 35 + legOffset, 4, 8);
+        ctx.fillRect(ped.x + 12, ped.y + 35 - legOffset, 4, 8);
+        
+        ctx.strokeStyle = ped.color;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(ped.x + 5, ped.y + 25);
+        ctx.lineTo(ped.x + 2, ped.y + 25 + Math.sin(ped.walkCycle) * 5);
+        ctx.stroke();
+        
+        ctx.beginPath();
+        ctx.moveTo(ped.x + 15, ped.y + 25);
+        ctx.lineTo(ped.x + 18, ped.y + 25 - Math.sin(ped.walkCycle) * 5);
+        ctx.stroke();
+        
+        ctx.restore();
+    });
+
+    // Draw obstacles
     obstacles.forEach(obstacle => {
         ctx.save();
         ctx.translate(obstacle.x + obstacle.width / 2, obstacle.y + obstacle.height / 2);
         ctx.rotate(obstacle.rotation);
         
-        // Gradient for 3D effect
         const gradient = ctx.createLinearGradient(-obstacle.width / 2, 0, obstacle.width / 2, 0);
         gradient.addColorStop(0, obstacle.color);
         gradient.addColorStop(1, '#000');
@@ -206,24 +396,159 @@ function render() {
         ctx.restore();
     });
 
-    // Draw player car with glow effect
+    // Draw power-ups
+    powerUps.forEach(power => {
+        ctx.save();
+        ctx.translate(power.x + power.width / 2, power.y + power.height / 2);
+        
+        const size = 15 + Math.sin(power.pulse) * 5;
+        ctx.globalAlpha = 0.8;
+        ctx.shadowBlur = 20;
+        
+        if (power.type === 'fly') {
+            ctx.fillStyle = '#00f0ff';
+            ctx.shadowColor = '#00f0ff';
+        } else {
+            ctx.fillStyle = '#ffff00';
+            ctx.shadowColor = '#ffff00';
+        }
+        
+        ctx.beginPath();
+        ctx.arc(0, 0, size, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 2;
+        if (power.type === 'fly') {
+            ctx.beginPath();
+            ctx.moveTo(-size * 0.6, 0);
+            ctx.lineTo(0, -size * 0.6);
+            ctx.lineTo(size * 0.6, 0);
+            ctx.stroke();
+        } else {
+            ctx.beginPath();
+            ctx.moveTo(0, -size * 0.4);
+            ctx.lineTo(-size * 0.3, size * 0.2);
+            ctx.lineTo(0, 0);
+            ctx.lineTo(size * 0.3, size * 0.2);
+            ctx.lineTo(0, size * 0.5);
+            ctx.stroke();
+        }
+        
+        ctx.restore();
+    });
+    ctx.globalAlpha = 1;
+
+    // Draw Mr. Bean's Green Mini Cooper
     ctx.save();
-    ctx.shadowBlur = 30;
-    ctx.shadowColor = playerCar.color;
-    ctx.fillStyle = playerCar.color;
+    
+    // Flying effect
+    if (gameState.flying) {
+        ctx.shadowBlur = 40;
+        ctx.shadowColor = '#00f0ff';
+        
+        ctx.fillStyle = '#00f0ff';
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath();
+        ctx.moveTo(playerCar.x - 20, playerCar.y + 40);
+        ctx.lineTo(playerCar.x - 40, playerCar.y + 50);
+        ctx.lineTo(playerCar.x - 20, playerCar.y + 60);
+        ctx.fill();
+        
+        ctx.beginPath();
+        ctx.moveTo(playerCar.x + playerCar.width + 20, playerCar.y + 40);
+        ctx.lineTo(playerCar.x + playerCar.width + 40, playerCar.y + 50);
+        ctx.lineTo(playerCar.x + playerCar.width + 20, playerCar.y + 60);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+    }
+    
+    // Apply tilt
+    ctx.translate(playerCar.x + playerCar.width / 2, playerCar.y + playerCar.height / 2);
+    ctx.rotate(playerCar.tilt);
     
     // Car body
+    const carGradient = ctx.createLinearGradient(-playerCar.width / 2, 0, playerCar.width / 2, 0);
+    carGradient.addColorStop(0, '#004400');
+    carGradient.addColorStop(0.5, '#008000');
+    carGradient.addColorStop(1, '#00aa00');
+    ctx.fillStyle = carGradient;
+    
+    ctx.shadowBlur = 25;
+    ctx.shadowColor = '#008000';
+    
+    // Rounded Mini Cooper body
     ctx.beginPath();
-    if (ctx.roundRect) {
-        ctx.roundRect(playerCar.x, playerCar.y, playerCar.width, playerCar.height, 10);
-    } else {
-        ctx.rect(playerCar.x, playerCar.y, playerCar.width, playerCar.height);
-    }
+    ctx.arc(0, -playerCar.height / 3, playerCar.width / 2 - 3, 0, Math.PI, true);
+    ctx.lineTo(-playerCar.width / 2 + 5, -playerCar.height / 2);
+    ctx.lineTo(-playerCar.width / 2 + 5, playerCar.height / 2);
+    ctx.arc(0, playerCar.height / 3, playerCar.width / 2 - 3, 0, Math.PI, false);
+    ctx.lineTo(playerCar.width / 2 - 5, playerCar.height / 2);
+    ctx.lineTo(playerCar.width / 2 - 5, -playerCar.height / 2);
+    ctx.closePath();
     ctx.fill();
     
-    // Car details
-    ctx.fillStyle = '#001a0f';
-    ctx.fillRect(playerCar.x + 10, playerCar.y + 5, playerCar.width - 20, playerCar.height - 60);
+    // White racing stripe
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(-playerCar.width / 2 + 3, -playerCar.height / 2 + 2, playerCar.width - 6, 3);
+    ctx.fillRect(-playerCar.width / 2 + 3, playerCar.height / 4, playerCar.width - 6, 3);
+    
+    // Windows
+    ctx.fillStyle = '#001122';
+    ctx.globalAlpha = 0.7;
+    ctx.fillRect(-playerCar.width / 2 + 8, -playerCar.height / 2 + 5, playerCar.width / 3, playerCar.height / 3);
+    ctx.fillRect(playerCar.width / 6, -playerCar.height / 2 + 5, playerCar.width / 3, playerCar.height / 3);
+    ctx.globalAlpha = 1;
+    
+    // Wheels
+    ctx.save();
+    ctx.translate(-playerCar.width / 3 + 5, playerCar.height / 2 - 5);
+    ctx.rotate(playerCar.wheelsRotation);
+    ctx.fillStyle = '#222';
+    ctx.beginPath();
+    ctx.arc(0, 0, 14, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 12; i++) {
+        const angle = i * Math.PI / 6;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(angle) * 6, Math.sin(angle) * 6);
+        ctx.lineTo(Math.cos(angle) * 10, Math.sin(angle) * 10);
+        ctx.stroke();
+    }
+    
+    ctx.fillStyle = '#444';
+    ctx.beginPath();
+    ctx.arc(0, 0, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    
+    // Second wheel
+    ctx.save();
+    ctx.translate(playerCar.width / 3 - 5, playerCar.height / 2 - 5);
+    ctx.rotate(playerCar.wheelsRotation);
+    ctx.fillStyle = '#222';
+    ctx.beginPath();
+    ctx.arc(0, 0, 14, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 12; i++) {
+        const angle = i * Math.PI / 6;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(angle) * 6, Math.sin(angle) * 6);
+        ctx.lineTo(Math.cos(angle) * 10, Math.sin(angle) * 10);
+        ctx.stroke();
+    }
+    
+    ctx.fillStyle = '#444';
+    ctx.beginPath();
+    ctx.arc(0, 0, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
     
     ctx.restore();
 
@@ -235,14 +560,16 @@ function render() {
     });
     ctx.globalAlpha = 1;
 
-    // Update speed display
-    const speedPercentage = (gameState.speed / gameState.maxSpeed) * 100;
-    document.getElementById('speed-fill').style.width = speedPercentage + '%';
+    // Flying overlay
+    if (gameState.flying) {
+        ctx.fillStyle = 'rgba(0, 240, 255, 0.15)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
 }
 
 // Game loop
-function gameLoop(timestamp) {
-    update(16);
+function gameLoop() {
+    update();
     render();
     
     if (gameState.running) {
@@ -256,8 +583,14 @@ function initGame() {
     gameState.score = 0;
     gameState.speed = gameState.roadSpeed;
     gameState.collisionChecked = false;
+    gameState.flying = false;
+    gameState.flyTime = 0;
+    gameState.boostActive = false;
+    gameState.boostTime = 0;
     obstacles.length = 0;
+    pedestrians.length = 0;
     particles.length = 0;
+    powerUps.length = 0;
     initRoad();
     updateScoreDisplay();
     gameLoop();
@@ -267,11 +600,12 @@ function initGame() {
 function gameOver() {
     gameState.running = false;
     gameState.collisionChecked = true;
+    gameState.flying = false;
+    gameState.boostActive = false;
     
     const finalScore = gameState.score;
     document.getElementById('final-score').textContent = finalScore;
     
-    // Check for new high score
     if (finalScore > gameState.highScore) {
         gameState.highScore = finalScore;
         document.getElementById('new-highscore').classList.remove('hidden');
@@ -279,7 +613,6 @@ function gameOver() {
         document.getElementById('new-highscore').classList.add('hidden');
     }
     
-    // Show game over screen
     document.getElementById('game-screen').classList.add('hidden');
     document.getElementById('gameover-screen').classList.remove('hidden');
 }
@@ -288,6 +621,29 @@ function gameOver() {
 function updateScoreDisplay() {
     document.getElementById('current-score').textContent = gameState.score;
     document.getElementById('high-score').textContent = gameState.highScore;
+    
+    const speedPercentage = (gameState.speed / gameState.maxSpeed) * 100;
+    document.getElementById('speed-fill').style.width = speedPercentage + '%';
+    
+    let statusText = '';
+    if (gameState.flying) {
+        statusText = `FLYING (${Math.ceil(gameState.flyTime / 1000)}s)`;
+    } else if (gameState.boostActive) {
+        statusText = `BOOSTED (${Math.ceil(gameState.boostTime / 1000)}s)`;
+    }
+    
+    const statusDisplay = document.getElementById('status-display');
+    if (statusText) {
+        if (!statusDisplay) {
+            const div = document.createElement('div');
+            div.id = 'status-display';
+            div.className = 'status-text';
+            document.querySelector('.score-display').appendChild(div);
+        }
+        statusDisplay.textContent = statusText;
+    } else if (statusDisplay) {
+        statusDisplay.remove();
+    }
 }
 
 async function saveScore() {
@@ -308,7 +664,6 @@ async function saveScore() {
         }
     } catch (error) {
         console.error('Error saving score:', error);
-        // Fallback to localStorage
         saveScoreToLocal(playerName, score);
     }
     
@@ -331,7 +686,6 @@ async function showHighScores() {
         displayHighScores(scores);
     } catch (error) {
         console.error('Error fetching scores:', error);
-        // Fallback to localStorage
         const scores = JSON.parse(localStorage.getItem('scores') || '[]');
         displayHighScores(scores);
     }
@@ -395,4 +749,3 @@ loadHighScore();
 
 // Initial render
 render();
-
