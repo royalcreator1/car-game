@@ -202,12 +202,7 @@ function update(deltaTime) {
         gameState.slipperyTime -= 16;
         if (gameState.slipperyTime <= 0) {
             gameState.slippery = false;
-            playerCar.speed = playerCar.baseSpeed;
-        }
-    } else {
-        // Reset speed if not slippery
-        if (!gameState.slippery && playerCar.speed !== playerCar.baseSpeed) {
-            playerCar.speed = playerCar.baseSpeed;
+            // Don't mess with speed, just reset the flag
         }
     }
 
@@ -229,8 +224,13 @@ function update(deltaTime) {
         }
     });
 
-    // Update player car
-    const moveSpeed = gameState.slippery ? playerCar.speed * 0.3 : playerCar.speed;
+    // Update player car - improved slippery handling
+    let moveSpeed = playerCar.speed;
+    if (gameState.slippery) {
+        // When slippery, make steering harder but not impossible
+        moveSpeed = playerCar.speed * 0.6;
+    }
+    
     let moved = false;
     
     if (keys['ArrowLeft'] && playerCar.x > canvas.width / 6) {
@@ -260,7 +260,7 @@ function update(deltaTime) {
         ped.y += ped.speed;
         ped.walkCycle += 0.2;
         
-        if (!gameState.collisionChecked && !gameState.flying) {
+        if (!gameState.collisionChecked && !gameState.flying && gameState.running) {
             if (playerCar.x < ped.x + ped.width &&
                 playerCar.x + playerCar.width > ped.x &&
                 playerCar.y < ped.y + ped.height &&
@@ -285,7 +285,7 @@ function update(deltaTime) {
         obstacle.y += obstacle.speed;
         obstacle.rotation += 0.15;
         
-        if (!gameState.collisionChecked && !gameState.flying) {
+        if (!gameState.collisionChecked && !gameState.flying && gameState.running) {
             if (playerCar.x < obstacle.x + obstacle.width &&
                 playerCar.x + playerCar.width > obstacle.x &&
                 playerCar.y < obstacle.y + obstacle.height &&
@@ -338,7 +338,8 @@ function update(deltaTime) {
         hazard.y += hazard.speed;
         hazard.rotation += 0.05;
         
-        if (!hazard.triggered && 
+        // Only check collision if game is still running
+        if (gameState.running && !hazard.triggered && 
             playerCar.x < hazard.x + hazard.width &&
             playerCar.x + playerCar.width > hazard.x &&
             playerCar.y < hazard.y + hazard.height &&
@@ -347,17 +348,16 @@ function update(deltaTime) {
             // Mark as triggered to prevent re-triggering
             hazard.triggered = true;
             
-            // Apply slippery effect
+            // Apply slippery effect WITHOUT stopping the game
             gameState.slippery = true;
             gameState.slipperyTime = 2000;
-            playerCar.speed = playerCar.baseSpeed; // Reset before applying effect
             createDust(hazard.x + hazard.width / 2, hazard.y + hazard.height / 2);
             
             // Remove hazard after a delay
             setTimeout(() => {
                 const i = hazards.indexOf(hazard);
                 if (i > -1) hazards.splice(i, 1);
-            }, 1000);
+            }, 1500);
         }
         
         if (hazard.y > canvas.height) {
