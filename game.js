@@ -17,8 +17,6 @@ const gameState = {
     flying: false,
     flyTime: 0,
     maxFlyTime: 3000,
-    slippery: false,
-    slipperyTime: 0,
     boostActive: false,
     boostTime: 0,
     collisionChecked: false
@@ -31,9 +29,6 @@ const playerCar = {
     width: 70,
     height: 80,
     speed: 8,
-    baseSpeed: 8,
-    color: '#008000', // British Racing Green
-    tint: '#00aa00',
     tilt: 0,
     wheelsRotation: 0,
     animationFrame: 0
@@ -44,8 +39,6 @@ const roadLines = [];
 const particles = [];
 const pedestrians = [];
 const powerUps = [];
-const hazards = [];
-const roadDust = [];
 
 // Input handling
 const keys = {};
@@ -107,8 +100,7 @@ function generatePedestrian() {
         height: 40,
         color: `hsl(${Math.random() * 360}, 50%, 50%)`,
         walkCycle: 0,
-        speed: gameState.roadSpeed,
-        side: Math.random() > 0.5 ? 1 : -1
+        speed: gameState.roadSpeed
     });
 }
 
@@ -128,28 +120,8 @@ function generatePowerUp() {
         type: type,
         rotation: 0,
         pulse: 0,
-        speed: gameState.roadSpeed
-    });
-}
-
-// Generate hazards
-function generateHazard() {
-    const laneWidth = canvas.width / 4;
-    const lanes = [laneWidth, laneWidth * 2, laneWidth * 3];
-    const lane = lanes[Math.floor(Math.random() * lanes.length)];
-    const types = ['water', 'grease'];
-    const type = types[Math.floor(Math.random() * types.length)];
-    
-    hazards.push({
-        x: lane,
-        y: -50,
-        width: 60,
-        height: 60,
-        type: type,
-        rotation: 0,
-        opacity: 0.7,
         speed: gameState.roadSpeed,
-        triggered: false // Track if already triggered
+        collected: false
     });
 }
 
@@ -167,20 +139,8 @@ function createExplosion(x, y, color = null) {
     }
 }
 
-function createDust(x, y) {
-    for (let i = 0; i < 10; i++) {
-        roadDust.push({
-            x: x + Math.random() * 100 - 50,
-            y: y + Math.random() * 100 - 50,
-            size: Math.random() * 8 + 2,
-            life: 1.0,
-            opacity: Math.random() * 0.3 + 0.2
-        });
-    }
-}
-
 // Update function
-function update(deltaTime) {
+function update() {
     if (!gameState.running) return;
 
     // Update road animation
@@ -194,15 +154,6 @@ function update(deltaTime) {
         gameState.flyTime -= 16;
         if (gameState.flyTime <= 0) {
             gameState.flying = false;
-        }
-    }
-
-    // Update slippery state - FIXED BUG
-    if (gameState.slippery) {
-        gameState.slipperyTime -= 16;
-        if (gameState.slipperyTime <= 0) {
-            gameState.slippery = false;
-            // Don't mess with speed, just reset the flag
         }
     }
 
@@ -224,21 +175,15 @@ function update(deltaTime) {
         }
     });
 
-    // Update player car - improved slippery handling
-    let moveSpeed = playerCar.speed;
-    if (gameState.slippery) {
-        // When slippery, make steering harder but not impossible
-        moveSpeed = playerCar.speed * 0.6;
-    }
-    
+    // Update player car
     let moved = false;
     
     if (keys['ArrowLeft'] && playerCar.x > canvas.width / 6) {
-        playerCar.x -= moveSpeed;
+        playerCar.x -= playerCar.speed;
         moved = true;
         playerCar.tilt = -0.2;
     } else if (keys['ArrowRight'] && playerCar.x < canvas.width - canvas.width / 6) {
-        playerCar.x += moveSpeed;
+        playerCar.x += playerCar.speed;
         moved = true;
         playerCar.tilt = 0.2;
     } else {
@@ -256,15 +201,18 @@ function update(deltaTime) {
     }
 
     // Update pedestrians
-    pedestrians.forEach((ped, index) => {
+    for (let i = pedestrians.length - 1; i >= 0; i--) {
+        const ped = pedestrians[i];
         ped.y += ped.speed;
         ped.walkCycle += 0.2;
         
-        if (!gameState.collisionChecked && !gameState.flying && gameState.running) {
+        // Check collision only if not already checked and not flying
+        if (gameState.running && !gameState.collisionChecked && !gameState.flying) {
             if (playerCar.x < ped.x + ped.width &&
                 playerCar.x + playerCar.width > ped.x &&
                 playerCar.y < ped.y + ped.height &&
                 playerCar.y + playerCar.height > ped.y) {
+                
                 gameState.collisionChecked = true;
                 gameState.running = false;
                 createExplosion(ped.x + ped.width / 2, ped.y + ped.height / 2, '#ff4444');
@@ -274,22 +222,25 @@ function update(deltaTime) {
         }
         
         if (ped.y > canvas.height) {
-            pedestrians.splice(index, 1);
+            pedestrians.splice(i, 1);
             gameState.score += 15;
             updateScoreDisplay();
         }
-    });
+    }
 
     // Update obstacles
-    obstacles.forEach((obstacle, index) => {
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+        const obstacle = obstacles[i];
         obstacle.y += obstacle.speed;
         obstacle.rotation += 0.15;
         
-        if (!gameState.collisionChecked && !gameState.flying && gameState.running) {
+        // Check collision only if not already checked and not flying
+        if (gameState.running && !gameState.collisionChecked && !gameState.flying) {
             if (playerCar.x < obstacle.x + obstacle.width &&
                 playerCar.x + playerCar.width > obstacle.x &&
                 playerCar.y < obstacle.y + obstacle.height &&
                 playerCar.y + playerCar.height > obstacle.y) {
+                
                 gameState.collisionChecked = true;
                 gameState.running = false;
                 createExplosion(obstacle.x + obstacle.width / 2, obstacle.y + obstacle.height / 2);
@@ -299,23 +250,29 @@ function update(deltaTime) {
         }
         
         if (obstacle.y > canvas.height) {
-            obstacles.splice(index, 1);
+            obstacles.splice(i, 1);
             gameState.score += 10;
             updateScoreDisplay();
         }
-    });
+    }
 
-    // Update power-ups
-    powerUps.forEach((power, index) => {
+    // Update power-ups - SIMPLIFIED AND BULLETPROOF
+    for (let i = powerUps.length - 1; i >= 0; i--) {
+        const power = powerUps[i];
         power.y += power.speed;
         power.rotation += 0.1;
         power.pulse = (power.pulse + 0.1) % (Math.PI * 2);
         
-        if (gameState.running && 
+        // Check if player collected power-up
+        if (!power.collected &&
             playerCar.x < power.x + power.width &&
             playerCar.x + playerCar.width > power.x &&
             playerCar.y < power.y + power.height &&
             playerCar.y + playerCar.height > power.y) {
+            
+            // Mark as collected immediately to prevent re-processing
+            power.collected = true;
+            
             if (power.type === 'fly') {
                 gameState.flying = true;
                 gameState.flyTime = gameState.maxFlyTime;
@@ -325,50 +282,16 @@ function update(deltaTime) {
                 gameState.boostTime = 5000;
                 createExplosion(power.x + power.width / 2, power.y + power.height / 2, '#ffff00');
             }
-            powerUps.splice(index, 1);
-            return;
+            
+            // Remove immediately
+            powerUps.splice(i, 1);
+            continue;
         }
         
         if (power.y > canvas.height) {
-            powerUps.splice(index, 1);
+            powerUps.splice(i, 1);
         }
-    });
-
-    // Update hazards - FIXED BUG
-    hazards.forEach((hazard, index) => {
-        hazard.y += hazard.speed;
-        hazard.rotation += 0.05;
-        
-        // Only check collision if game is still running and not already triggered
-        if (gameState.running && !hazard.triggered) {
-            // Check if touching hazard
-            const inHazard = playerCar.x < hazard.x + hazard.width &&
-                playerCar.x + playerCar.width > hazard.x &&
-                playerCar.y < hazard.y + hazard.height &&
-                playerCar.y + playerCar.height > hazard.y;
-            
-            if (inHazard) {
-                // Mark as triggered immediately
-                hazard.triggered = true;
-                
-                // Apply slippery effect WITHOUT stopping the game
-                gameState.slippery = true;
-                gameState.slipperyTime = 2000;
-                createDust(hazard.x + hazard.width / 2, hazard.y + hazard.height / 2);
-                
-                // Remove hazard immediately to prevent any issues
-                setTimeout(() => {
-                    const i = hazards.indexOf(hazard);
-                    if (i > -1) hazards.splice(i, 1);
-                }, 100);
-            }
-        }
-        
-        if (hazard.y > canvas.height || hazard.triggered) {
-            const i = hazards.indexOf(hazard);
-            if (i > -1) hazards.splice(i, 1);
-        }
-    });
+    }
 
     // Spawn entities
     if (Math.random() < 0.015) {
@@ -380,36 +303,24 @@ function update(deltaTime) {
     if (Math.random() < 0.003) {
         generatePowerUp();
     }
-    if (Math.random() < 0.005) {
-        generateHazard();
-    }
 
     // Update particles
-    particles.forEach((particle, index) => {
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const particle = particles[i];
         particle.x += particle.vx;
         particle.y += particle.vy;
         particle.life -= 0.02;
         particle.vy += 0.3;
         
         if (particle.life <= 0) {
-            particles.splice(index, 1);
+            particles.splice(i, 1);
         }
-    });
-
-    // Update road dust
-    roadDust.forEach((dust, index) => {
-        dust.y += gameState.roadSpeed;
-        dust.life -= 0.01;
-        
-        if (dust.life <= 0) {
-            roadDust.splice(index, 1);
-        }
-    });
+    }
 }
 
 // Render function
 function render() {
-    // Clear canvas with fade effect
+    // Clear canvas
     ctx.fillStyle = 'rgba(10, 10, 10, 0.8)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -417,7 +328,7 @@ function render() {
     ctx.fillStyle = '#1a1a1a';
     ctx.fillRect(canvas.width / 6, 0, (canvas.width * 2) / 3, canvas.height);
 
-    // Draw grass/side edges
+    // Draw side edges
     const gradient = ctx.createLinearGradient(0, 0, canvas.width / 6, 0);
     gradient.addColorStop(0, '#2a4a2a');
     gradient.addColorStop(1, '#0a2a0a');
@@ -437,58 +348,22 @@ function render() {
         ctx.setLineDash([]);
     });
 
-    // Draw hazards
-    hazards.forEach(hazard => {
-        ctx.save();
-        ctx.globalAlpha = hazard.opacity;
-        
-        if (hazard.type === 'water') {
-            ctx.fillStyle = '#0099ff';
-            ctx.shadowBlur = 20;
-            ctx.shadowColor = '#0099ff';
-        } else {
-            ctx.fillStyle = '#888888';
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = '#888888';
-        }
-        
-        ctx.beginPath();
-        ctx.arc(hazard.x + hazard.width / 2, hazard.y + hazard.height / 2, 
-                hazard.width / 2, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-    });
-
-    // Draw road dust
-    roadDust.forEach(dust => {
-        ctx.globalAlpha = dust.life * dust.opacity;
-        ctx.fillStyle = '#666';
-        ctx.beginPath();
-        ctx.arc(dust.x, dust.y, dust.size, 0, Math.PI * 2);
-        ctx.fill();
-    });
-    ctx.globalAlpha = 1;
-
     // Draw pedestrians
     pedestrians.forEach(ped => {
         ctx.save();
         
-        // Body
         ctx.fillStyle = ped.color;
         ctx.fillRect(ped.x + 5, ped.y + 20, 10, 20);
         
-        // Head
         ctx.beginPath();
         ctx.arc(ped.x + ped.width / 2, ped.y + 12, 8, 0, Math.PI * 2);
         ctx.fill();
         
-        // Legs (walking animation)
         const legOffset = Math.sin(ped.walkCycle) * 3;
         ctx.fillStyle = '#333';
         ctx.fillRect(ped.x + 6, ped.y + 35 + legOffset, 4, 8);
         ctx.fillRect(ped.x + 12, ped.y + 35 - legOffset, 4, 8);
         
-        // Arms
         ctx.strokeStyle = ped.color;
         ctx.lineWidth = 3;
         ctx.beginPath();
@@ -542,7 +417,6 @@ function render() {
         ctx.arc(0, 0, size, 0, Math.PI * 2);
         ctx.fill();
         
-        // Icon
         ctx.strokeStyle = '#000';
         ctx.lineWidth = 2;
         if (power.type === 'fly') {
@@ -573,7 +447,6 @@ function render() {
         ctx.shadowBlur = 40;
         ctx.shadowColor = '#00f0ff';
         
-        // Wings
         ctx.fillStyle = '#00f0ff';
         ctx.globalAlpha = 0.6;
         ctx.beginPath();
@@ -594,7 +467,7 @@ function render() {
     ctx.translate(playerCar.x + playerCar.width / 2, playerCar.y + playerCar.height / 2);
     ctx.rotate(playerCar.tilt);
     
-    // Mr. Bean's Car - Classic Mini Cooper Design
+    // Car body
     const carGradient = ctx.createLinearGradient(-playerCar.width / 2, 0, playerCar.width / 2, 0);
     carGradient.addColorStop(0, '#004400');
     carGradient.addColorStop(0.5, '#008000');
@@ -615,7 +488,7 @@ function render() {
     ctx.closePath();
     ctx.fill();
     
-    // White racing stripe (characteristic of Mini Cooper)
+    // White racing stripe
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(-playerCar.width / 2 + 3, -playerCar.height / 2 + 2, playerCar.width - 6, 3);
     ctx.fillRect(-playerCar.width / 2 + 3, playerCar.height / 4, playerCar.width - 6, 3);
@@ -627,7 +500,7 @@ function render() {
     ctx.fillRect(playerCar.width / 6, -playerCar.height / 2 + 5, playerCar.width / 3, playerCar.height / 3);
     ctx.globalAlpha = 1;
     
-    // Wheels (large Mini Cooper wheels)
+    // Wheels
     ctx.save();
     ctx.translate(-playerCar.width / 3 + 5, playerCar.height / 2 - 5);
     ctx.rotate(playerCar.wheelsRotation);
@@ -636,7 +509,6 @@ function render() {
     ctx.arc(0, 0, 14, 0, Math.PI * 2);
     ctx.fill();
     
-    // Tire detail
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 2;
     for (let i = 0; i < 12; i++) {
@@ -647,7 +519,6 @@ function render() {
         ctx.stroke();
     }
     
-    // Hub
     ctx.fillStyle = '#444';
     ctx.beginPath();
     ctx.arc(0, 0, 4, 0, Math.PI * 2);
@@ -663,7 +534,6 @@ function render() {
     ctx.arc(0, 0, 14, 0, Math.PI * 2);
     ctx.fill();
     
-    // Tire detail
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 2;
     for (let i = 0; i < 12; i++) {
@@ -674,7 +544,6 @@ function render() {
         ctx.stroke();
     }
     
-    // Hub
     ctx.fillStyle = '#444';
     ctx.beginPath();
     ctx.arc(0, 0, 4, 0, Math.PI * 2);
@@ -691,21 +560,16 @@ function render() {
     });
     ctx.globalAlpha = 1;
 
-    // Draw UI overlays
+    // Flying overlay
     if (gameState.flying) {
-        ctx.fillStyle = 'rgba(0, 240, 255, 0.2)';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
-    
-    if (gameState.slippery) {
-        ctx.fillStyle = 'rgba(255, 255, 0, 0.15)';
+        ctx.fillStyle = 'rgba(0, 240, 255, 0.15)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 }
 
 // Game loop
-function gameLoop(timestamp) {
-    update(16);
+function gameLoop() {
+    update();
     render();
     
     if (gameState.running) {
@@ -721,16 +585,12 @@ function initGame() {
     gameState.collisionChecked = false;
     gameState.flying = false;
     gameState.flyTime = 0;
-    gameState.slippery = false;
-    gameState.slipperyTime = 0;
     gameState.boostActive = false;
     gameState.boostTime = 0;
     obstacles.length = 0;
     pedestrians.length = 0;
     particles.length = 0;
     powerUps.length = 0;
-    hazards.length = 0;
-    roadDust.length = 0;
     initRoad();
     updateScoreDisplay();
     gameLoop();
@@ -741,13 +601,11 @@ function gameOver() {
     gameState.running = false;
     gameState.collisionChecked = true;
     gameState.flying = false;
-    gameState.slippery = false;
     gameState.boostActive = false;
     
     const finalScore = gameState.score;
     document.getElementById('final-score').textContent = finalScore;
     
-    // Check for new high score
     if (finalScore > gameState.highScore) {
         gameState.highScore = finalScore;
         document.getElementById('new-highscore').classList.remove('hidden');
@@ -755,7 +613,6 @@ function gameOver() {
         document.getElementById('new-highscore').classList.add('hidden');
     }
     
-    // Show game over screen
     document.getElementById('game-screen').classList.add('hidden');
     document.getElementById('gameover-screen').classList.remove('hidden');
 }
@@ -765,16 +622,12 @@ function updateScoreDisplay() {
     document.getElementById('current-score').textContent = gameState.score;
     document.getElementById('high-score').textContent = gameState.highScore;
     
-    // Update speed display
     const speedPercentage = (gameState.speed / gameState.maxSpeed) * 100;
     document.getElementById('speed-fill').style.width = speedPercentage + '%';
     
-    // Update status indicators
     let statusText = '';
     if (gameState.flying) {
         statusText = `FLYING (${Math.ceil(gameState.flyTime / 1000)}s)`;
-    } else if (gameState.slippery) {
-        statusText = `SLIPPERY (${Math.ceil(gameState.slipperyTime / 1000)}s)`;
     } else if (gameState.boostActive) {
         statusText = `BOOSTED (${Math.ceil(gameState.boostTime / 1000)}s)`;
     }
