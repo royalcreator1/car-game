@@ -2,6 +2,8 @@
 
 A professional, feature-rich car racing game with smooth animations, dynamic gameplay, and a highscore system.
 
+**Built in 2 minutes with Cursor AI** 🚀
+
 ## Features
 
 - **Professional Graphics**: Neon-lit futuristic aesthetic with smooth animations
