@@ -311,7 +311,8 @@ function update(deltaTime) {
         power.rotation += 0.1;
         power.pulse = (power.pulse + 0.1) % (Math.PI * 2);
         
-        if (playerCar.x < power.x + power.width &&
+        if (gameState.running && 
+            playerCar.x < power.x + power.width &&
             playerCar.x + playerCar.width > power.x &&
             playerCar.y < power.y + power.height &&
             playerCar.y + playerCar.height > power.y) {
@@ -338,30 +339,34 @@ function update(deltaTime) {
         hazard.y += hazard.speed;
         hazard.rotation += 0.05;
         
-        // Only check collision if game is still running
-        if (gameState.running && !hazard.triggered && 
-            playerCar.x < hazard.x + hazard.width &&
-            playerCar.x + playerCar.width > hazard.x &&
-            playerCar.y < hazard.y + hazard.height &&
-            playerCar.y + playerCar.height > hazard.y) {
+        // Only check collision if game is still running and not already triggered
+        if (gameState.running && !hazard.triggered) {
+            // Check if touching hazard
+            const inHazard = playerCar.x < hazard.x + hazard.width &&
+                playerCar.x + playerCar.width > hazard.x &&
+                playerCar.y < hazard.y + hazard.height &&
+                playerCar.y + playerCar.height > hazard.y;
             
-            // Mark as triggered to prevent re-triggering
-            hazard.triggered = true;
-            
-            // Apply slippery effect WITHOUT stopping the game
-            gameState.slippery = true;
-            gameState.slipperyTime = 2000;
-            createDust(hazard.x + hazard.width / 2, hazard.y + hazard.height / 2);
-            
-            // Remove hazard after a delay
-            setTimeout(() => {
-                const i = hazards.indexOf(hazard);
-                if (i > -1) hazards.splice(i, 1);
-            }, 1500);
+            if (inHazard) {
+                // Mark as triggered immediately
+                hazard.triggered = true;
+                
+                // Apply slippery effect WITHOUT stopping the game
+                gameState.slippery = true;
+                gameState.slipperyTime = 2000;
+                createDust(hazard.x + hazard.width / 2, hazard.y + hazard.height / 2);
+                
+                // Remove hazard immediately to prevent any issues
+                setTimeout(() => {
+                    const i = hazards.indexOf(hazard);
+                    if (i > -1) hazards.splice(i, 1);
+                }, 100);
+            }
         }
         
-        if (hazard.y > canvas.height) {
-            hazards.splice(index, 1);
+        if (hazard.y > canvas.height || hazard.triggered) {
+            const i = hazards.indexOf(hazard);
+            if (i > -1) hazards.splice(i, 1);
         }
     });
 
